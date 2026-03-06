@@ -1,6 +1,6 @@
-# Blink Dashboard v2 — BigQuery Edition
+# Blink Dashboard
 
-Real-time Blink metrics dashboard reading from BigQuery (streamed from prod DB). Zero load on production database.
+Real-time Blink metrics dashboard — reads from BigQuery, zero prod DB load
 
 ## Architecture
 
