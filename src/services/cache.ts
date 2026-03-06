@@ -1,18 +1,14 @@
 import Redis from "ioredis";
-import { config } from "../../config/index.js";
-import { logger } from "../../utils/logger.js";
-import type { Metrics, MetricsSnapshot } from "../../types/index.js";
-
-// ─── Keys ────────────────────────────────────────────────────────
+import { config } from "../config/index";
+import { logger } from "../utils/logger";
+import type { DashboardMetrics } from "../types/index";
 
 const KEYS = {
-  CURRENT_METRICS: "blink:metrics:current",
-  SNAPSHOTS: "blink:metrics:snapshots", // sorted set by timestamp
+  CURRENT: "blink:metrics:current",
+  HISTORY: "blink:metrics:history",
 } as const;
 
-const MAX_SNAPSHOTS = 1440; // ~24h at 1 per minute
-
-// ─── Connection ──────────────────────────────────────────────────
+const MAX_HISTORY = 1440; // ~24h at 1 per minute
 
 let redis: Redis | null = null;
 
@@ -41,60 +37,34 @@ export async function disconnectRedis(): Promise<void> {
   }
 }
 
-// ─── Metrics storage ─────────────────────────────────────────────
-
-export async function setCurrentMetrics(metrics: Metrics): Promise<void> {
-  const r = getRedis();
-  await r.set(KEYS.CURRENT_METRICS, JSON.stringify(metrics));
+export async function setCurrentMetrics(metrics: DashboardMetrics): Promise<void> {
+  await getRedis().set(KEYS.CURRENT, JSON.stringify(metrics));
 }
 
-export async function getCurrentMetrics(): Promise<Metrics | null> {
-  const r = getRedis();
-  const raw = await r.get(KEYS.CURRENT_METRICS);
+export async function getCurrentMetrics(): Promise<DashboardMetrics | null> {
+  const raw = await getRedis().get(KEYS.CURRENT);
   if (!raw) return null;
   try {
-    return JSON.parse(raw) as Metrics;
+    return JSON.parse(raw) as DashboardMetrics;
   } catch {
     return null;
   }
 }
 
-/**
- * Store a metrics snapshot (for sparkline history).
- */
-export async function pushSnapshot(metrics: Metrics): Promise<void> {
+export async function pushHistory(metrics: DashboardMetrics): Promise<void> {
   const r = getRedis();
-  const timestamp = Date.now();
-  const snapshot: MetricsSnapshot = {
-    ...metrics,
-    snapshotId: `snap_${timestamp}`,
-  };
-
-  await r.zadd(KEYS.SNAPSHOTS, timestamp, JSON.stringify(snapshot));
-
-  // Trim old snapshots
-  const count = await r.zcard(KEYS.SNAPSHOTS);
-  if (count > MAX_SNAPSHOTS) {
-    await r.zremrangebyrank(KEYS.SNAPSHOTS, 0, count - MAX_SNAPSHOTS - 1);
+  const ts = Date.now();
+  await r.zadd(KEYS.HISTORY, ts, JSON.stringify(metrics));
+  const count = await r.zcard(KEYS.HISTORY);
+  if (count > MAX_HISTORY) {
+    await r.zremrangebyrank(KEYS.HISTORY, 0, count - MAX_HISTORY - 1);
   }
 }
 
-/**
- * Get recent snapshots for sparkline data.
- */
-export async function getRecentSnapshots(
-  count: number = 60,
-): Promise<MetricsSnapshot[]> {
-  const r = getRedis();
-  const raw = await r.zrevrange(KEYS.SNAPSHOTS, 0, count - 1);
+export async function getHistory(count: number = 60): Promise<DashboardMetrics[]> {
+  const raw = await getRedis().zrevrange(KEYS.HISTORY, 0, count - 1);
   return raw
-    .map((s) => {
-      try {
-        return JSON.parse(s) as MetricsSnapshot;
-      } catch {
-        return null;
-      }
-    })
-    .filter((s): s is MetricsSnapshot => s !== null)
-    .reverse(); // chronological order
+    .map((s) => { try { return JSON.parse(s); } catch { return null; } })
+    .filter((s): s is DashboardMetrics => s !== null)
+    .reverse();
 }

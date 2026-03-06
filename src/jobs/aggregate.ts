@@ -1,120 +1,76 @@
-import { logger } from "../utils/logger.js";
-import type { Metrics } from "../types/index.js";
-import * as mongodb from "../services/galoy/mongodb.js";
-import * as adminApi from "../services/galoy/admin.js";
-import * as cache from "../services/cache.js";
+import { logger } from "../utils/logger";
+import * as bq from "../services/bigquery";
+import * as cache from "../services/cache";
+import type { DashboardMetrics, MetricWithPeriods } from "../types/index";
 
-// ─── Aggregation strategies ─────────────────────────────────────
-// Each metric can be fetched via multiple strategies (MongoDB first,
-// Admin API fallback). This makes the system resilient if one source
-// is down.
+// ─── Build a metric with both rolling windows ───────────────
 
-async function fetchWithFallback<T>(
+async function buildMetric(
   label: string,
-  primary: () => Promise<T>,
-  fallback?: () => Promise<T>,
-  defaultValue?: T,
-): Promise<T> {
-  try {
-    return await primary();
-  } catch (primaryErr) {
-    logger.warn(`Primary source for ${label} failed, trying fallback`, {
-      error: primaryErr,
-    });
-    if (fallback) {
-      try {
-        return await fallback();
-      } catch (fallbackErr) {
-        logger.error(`Fallback for ${label} also failed`, {
-          error: fallbackErr,
-        });
-      }
-    }
-    if (defaultValue !== undefined) return defaultValue;
-    throw new Error(`All sources for ${label} exhausted`);
-  }
+  queryFn: (days: number) => Promise<{ current: number; previous: number; deltaPct: number }>,
+  currentOverride?: number,
+): Promise<MetricWithPeriods> {
+  const [d30, d7] = await Promise.all([
+    queryFn(30).catch((err) => {
+      logger.warn(`${label} 30d query failed`, { error: err });
+      return { current: 0, previous: 0, deltaPct: 0 };
+    }),
+    queryFn(7).catch((err) => {
+      logger.warn(`${label} 7d query failed`, { error: err });
+      return { current: 0, previous: 0, deltaPct: 0 };
+    }),
+  ]);
+
+  return {
+    current: currentOverride ?? d30.current,
+    d30,
+    d7,
+  };
 }
 
-// ─── Main aggregation function ──────────────────────────────────
+// ─── Main aggregation ───────────────────────────────────────
 
-export async function aggregateMetrics(): Promise<Metrics> {
+export async function aggregateMetrics(): Promise<DashboardMetrics> {
   const start = Date.now();
-  logger.info("Starting metrics aggregation...");
+  logger.info("Starting BigQuery metrics aggregation...");
 
-  const [activeUsers, transactions, newUsers, btcCustodySats, countriesActive] =
-    await Promise.allSettled([
-      // Active Users: MongoDB → Admin API → cached
-      fetchWithFallback(
-        "activeUsers",
-        () => mongodb.getActiveUsers(30),
-        () => adminApi.getTotalUserCount(), // fallback: total users
-        0,
-      ),
-
-      // Transactions: MongoDB → 0
-      fetchWithFallback(
-        "transactions",
-        () => mongodb.getTransactionCount(30),
-        undefined,
-        0,
-      ),
-
-      // New Users: MongoDB → 0
-      fetchWithFallback(
-        "newUsers",
-        () => mongodb.getNewUsers(30),
-        undefined,
-        0,
-      ),
-
-      // BTC Custody: MongoDB → 0
-      fetchWithFallback(
-        "btcCustody",
-        () => mongodb.getTotalBtcBalance(),
-        undefined,
-        0,
-      ),
-
-      // Countries Active: MongoDB → Admin API
-      fetchWithFallback(
-        "countriesActive",
-        () => mongodb.getActiveCountries(),
-        () => adminApi.getActiveCountriesCount(),
-        0,
-      ),
+  // Run all queries in parallel
+  const [activeUsers, transactions, newUsers, btcCustody, countriesActive, totalAccounts] =
+    await Promise.all([
+      buildMetric("activeUsers", bq.getActiveUsers),
+      buildMetric("transactions", bq.getTransactions),
+      buildMetric("newUsers", bq.getNewUsers),
+      buildMetric("btcCustody", bq.getBtcCustody),
+      buildMetric("countriesActive", bq.getCountriesActive),
+      bq.getTotalAccounts().catch(() => 0),
     ]);
 
-  const extractValue = <T>(
-    result: PromiseSettledResult<T>,
-    fallback: T,
-  ): T => (result.status === "fulfilled" ? result.value : fallback);
+  // Use total accounts as the headline "current" for active users
+  // (or keep the 30d active count — depends on how they define it)
+  // activeUsers.current = totalAccounts; // uncomment if "active users" = total accounts
 
-  const sats = extractValue(btcCustodySats, 0);
-
-  const metrics: Metrics = {
-    activeUsers: extractValue(activeUsers, 0),
-    transactions: extractValue(transactions, 0),
-    newUsers: extractValue(newUsers, 0),
-    btcCustody: sats / 1e8, // convert sats → BTC
-    countriesActive: extractValue(countriesActive, 0),
+  const metrics: DashboardMetrics = {
+    activeUsers,
+    transactions,
+    newUsers,
+    btcCustody,
+    countriesActive,
     updatedAt: new Date().toISOString(),
   };
 
-  // Persist to cache
+  // Cache
   await cache.setCurrentMetrics(metrics);
-  await cache.pushSnapshot(metrics);
+  await cache.pushHistory(metrics);
 
   const elapsed = Date.now() - start;
-  logger.info("Metrics aggregation complete", { elapsed: `${elapsed}ms`, metrics });
+  logger.info("BigQuery aggregation complete", { elapsed: `${elapsed}ms` });
 
   return metrics;
 }
 
-// ─── Run standalone ──────────────────────────────────────────────
-// `npm run jobs:aggregate` to run once manually
+// ─── Run standalone: npm run jobs:aggregate ──────────────────
 
-const isMain = process.argv[1]?.endsWith("aggregate.ts") ||
-               process.argv[1]?.endsWith("aggregate.js");
+const isMain = process.argv[1]?.includes("aggregate");
 
 if (isMain) {
   (async () => {

@@ -1,60 +1,41 @@
 import { z } from "zod";
 
-// ─── Dashboard Metrics ───────────────────────────────────────────
+// ─── Period comparison: current vs previous ─────────────────
 
-export const MetricsSchema = z.object({
-  activeUsers: z.number().int().nonnegative(),
-  transactions: z.number().int().nonnegative(),
-  newUsers: z.number().int().nonnegative(),
-  btcCustody: z.number().nonnegative(),
-  countriesActive: z.number().int().nonnegative(),
+export const PeriodComparisonSchema = z.object({
+  current: z.number(),
+  previous: z.number(),
+  deltaPct: z.number(),
+});
+
+export type PeriodComparison = z.infer<typeof PeriodComparisonSchema>;
+
+// ─── Single metric with both rolling windows ────────────────
+
+export const MetricWithPeriodsSchema = z.object({
+  current: z.number(),
+  d30: PeriodComparisonSchema,
+  d7: PeriodComparisonSchema,
+});
+
+export type MetricWithPeriods = z.infer<typeof MetricWithPeriodsSchema>;
+
+// ─── Full dashboard metrics ─────────────────────────────────
+
+export const DashboardMetricsSchema = z.object({
+  activeUsers: MetricWithPeriodsSchema,
+  transactions: MetricWithPeriodsSchema,
+  newUsers: MetricWithPeriodsSchema,
+  btcCustody: MetricWithPeriodsSchema,
+  countriesActive: MetricWithPeriodsSchema,
   updatedAt: z.string().datetime(),
 });
 
-export type Metrics = z.infer<typeof MetricsSchema>;
+export type DashboardMetrics = z.infer<typeof DashboardMetricsSchema>;
 
-// ─── Historical snapshot for sparklines ──────────────────────────
+// ─── WebSocket events ───────────────────────────────────────
 
-export const MetricsSnapshotSchema = MetricsSchema.extend({
-  snapshotId: z.string(),
-});
-
-export type MetricsSnapshot = z.infer<typeof MetricsSnapshotSchema>;
-
-// ─── Galoy Admin API types ───────────────────────────────────────
-
-export interface GaloyAccount {
-  id: string;
-  createdAt: number; // unix timestamp
-  level: string;
-  status: "ACTIVE" | "LOCKED" | "CLOSED";
-  username: string | null;
-  owner: {
-    id: string;
-    phone: string | null;
-    createdAt: number;
-  };
-  wallets: GaloyWallet[];
-}
-
-export interface GaloyWallet {
-  id: string;
-  walletCurrency: "BTC" | "USD";
-  balance: number; // satoshis for BTC, cents for USD
-}
-
-export interface GaloyTransaction {
-  id: string;
-  createdAt: number;
-  direction: "SEND" | "RECEIVE";
-  settlementAmount: number;
-  settlementCurrency: string;
-  status: "SUCCESS" | "FAILURE" | "PENDING";
-}
-
-// ─── WebSocket events ────────────────────────────────────────────
-
-export type WsEventType = "metrics:update" | "metrics:snapshot" | "error";
+export type WsEventType = "metrics:update" | "error";
 
 export interface WsEvent<T = unknown> {
   type: WsEventType;
@@ -62,27 +43,48 @@ export interface WsEvent<T = unknown> {
   timestamp: string;
 }
 
-// ─── Config ──────────────────────────────────────────────────────
+// ─── BigQuery schema mapping ────────────────────────────────
+
+export interface BigQuerySchema {
+  tables: {
+    accounts: string;
+    transactions: string;
+    wallets: string;
+  };
+  fields: {
+    account: {
+      id: string;
+      createdAt: string;
+      phone: string;
+      status: string;
+    };
+    transaction: {
+      id: string;
+      accountId: string;
+      createdAt: string;
+      status: string;
+    };
+    wallet: {
+      id: string;
+      currency: string;
+      balance: string;
+    };
+  };
+}
+
+// ─── Config ─────────────────────────────────────────────────
 
 export interface AppConfig {
   port: number;
   nodeEnv: string;
-  galoy: {
-    adminApiUrl: string;
-    adminAuthToken: string;
-    publicApiUrl: string;
-    apiKey: string;
-  };
-  mongodb: {
-    uri: string;
-    dbName: string;
+  bigquery: {
+    projectId: string;
+    dataset: string;
+    credentialsJson?: string;
+    schema: BigQuerySchema;
   };
   redis: {
     url: string;
-  };
-  bria: {
-    apiUrl: string;
-    apiKey: string;
   };
   aggregationIntervalSeconds: number;
   corsOrigin: string;
