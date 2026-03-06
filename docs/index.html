@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#0c0c10" />
+  <title>Blink Numbers — Dashboard Demo</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg-deep: #0c0c10;
+      --bg-card: #1e1e24;
+      --bg-card-alt: #16161b;
+      --border-subtle: rgba(255,255,255,0.04);
+      --text-primary: #ffffff;
+      --text-secondary: rgba(255,255,255,0.4);
+      --text-muted: rgba(255,255,255,0.2);
+      --accent-amber: #f59e0b;
+      --accent-red: #ef4444;
+      --accent-green: #34d399;
+      --font-body: 'DM Sans', -apple-system, sans-serif;
+      --font-mono: 'JetBrains Mono', 'SF Mono', monospace;
+      --radius-md: 16px;
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { -webkit-font-smoothing: antialiased; }
+    body { font-family: var(--font-body); background: var(--bg-deep); color: var(--text-primary); min-height: 100vh; }
+
+    @keyframes fadeSlideIn {
+      from { opacity: 0; transform: translateY(18px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.35; }
+    }
+    @keyframes pulseRing {
+      0% { transform: scale(1); opacity: 0.4; }
+      100% { transform: scale(2.4); opacity: 0; }
+    }
+
+    .dashboard { max-width: 1200px; margin: 0 auto; padding: 32px 24px; }
+
+    .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 40px; flex-wrap: wrap; gap: 16px; }
+    .logo-bar { width: 4px; height: 36px; background: linear-gradient(180deg, var(--accent-amber), var(--accent-red)); border-radius: 2px; flex-shrink: 0; }
+    .logo-group { display: flex; align-items: center; gap: 12px; }
+    .title { font-size: 28px; font-weight: 700; letter-spacing: -0.02em; }
+    .title span { color: var(--text-secondary); font-weight: 400; }
+    .subtitle { font-size: 13px; color: var(--text-secondary); margin-left: 16px; margin-top: 4px; }
+    .header-right { display: flex; align-items: center; gap: 16px; }
+    .demo-badge { font-size: 10px; font-weight: 600; color: var(--accent-amber); background: rgba(245,158,11,0.1); border: 1px solid rgba(245,158,11,0.2); padding: 4px 10px; border-radius: 6px; font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.1em; }
+    .live-dot-wrap { display: flex; align-items: center; gap: 8px; }
+    .live-dot { position: relative; width: 8px; height: 8px; }
+    .live-dot-inner { width: 8px; height: 8px; border-radius: 50%; background: var(--accent-green); animation: pulse 2s ease-in-out infinite; }
+    .live-dot-ring { position: absolute; top: 0; left: 0; width: 8px; height: 8px; border-radius: 50%; background: var(--accent-green); animation: pulseRing 2s ease-in-out infinite; }
+    .live-label { font-size: 10px; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.14em; font-weight: 600; font-family: var(--font-mono); }
+    .timestamp { font-size: 11px; color: var(--text-muted); font-family: var(--font-mono); }
+
+    .grid-top { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; margin-bottom: 16px; }
+    .grid-bottom { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; margin-bottom: 24px; }
+
+    .card {
+      background: linear-gradient(145deg, var(--bg-card) 0%, var(--bg-card-alt) 100%);
+      border-radius: var(--radius-md);
+      padding: 24px 24px 10px;
+      position: relative;
+      overflow: hidden;
+      border: 1px solid var(--border-subtle);
+      min-height: 168px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      opacity: 0;
+      animation: fadeSlideIn 0.6s cubic-bezier(0.16,1,0.3,1) forwards;
+    }
+    .card-accent { position: absolute; top: 0; left: 24px; right: 24px; height: 2px; border-radius: 0 0 2px 2px; }
+    .card-label { font-size: 11px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.12em; margin-bottom: 10px; }
+    .card-value-row { display: flex; align-items: baseline; gap: 10px; }
+    .card-value { font-size: 42px; font-weight: 700; color: var(--text-primary); font-family: var(--font-mono); letter-spacing: -0.03em; line-height: 1; }
+    .delta { font-size: 11px; font-weight: 600; padding: 3px 8px; border-radius: 6px; font-family: var(--font-mono); }
+    .delta-up { color: var(--accent-green); background: rgba(52,211,153,0.1); }
+    .delta-down { color: var(--accent-red); background: rgba(248,113,113,0.1); }
+    .spark-wrap { margin: 14px -8px 0; height: 44px; }
+    .spark-wrap canvas { width: 100%; height: 100%; }
+
+    .globe-card {
+      background: linear-gradient(145deg, var(--bg-card) 0%, var(--bg-card-alt) 100%);
+      border-radius: var(--radius-md);
+      padding: 24px;
+      border: 1px solid var(--border-subtle);
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      min-height: 168px;
+      position: relative;
+      overflow: hidden;
+      opacity: 0;
+      animation: fadeSlideIn 0.6s cubic-bezier(0.16,1,0.3,1) forwards;
+    }
+    .globe-ring { position: absolute; border-radius: 50%; border-style: solid; border-width: 1px; }
+    .globe-value { font-size: 48px; font-weight: 700; color: var(--accent-amber); font-family: var(--font-mono); position: relative; z-index: 1; line-height: 1; }
+    .globe-label { font-size: 11px; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.12em; font-weight: 600; margin-top: 8px; position: relative; z-index: 1; }
+
+    .footer { margin-top: 24px; padding: 16px 0; border-top: 1px solid var(--border-subtle); display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px; font-size: 11px; color: var(--text-muted); }
+    .footer-mono { font-family: var(--font-mono); }
+  </style>
+</head>
+<body>
+  <div class="dashboard" id="app"></div>
+
+  <script>
+    const rand = (a, b) => Math.random() * (b - a) + a;
+    const fmt = (n, d = 0) => n.toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d });
+
+    let metrics = { activeUsers: 26213, transactions: 117196, newUsers: 5157, btcCustody: 64.98, countriesActive: 169 };
+
+    const historyLen = 40;
+    const history = { activeUsers: [], transactions: [], newUsers: [], btcCustody: [] };
+
+    let m = { ...metrics };
+    for (let i = 0; i < historyLen; i++) { m = tick(m); for (const k of Object.keys(history)) history[k].push(m[k]); }
+    metrics = m;
+
+    function tick(prev) {
+      return {
+        activeUsers: prev.activeUsers + Math.round(rand(-5, 15)),
+        transactions: prev.transactions + Math.round(rand(10, 60)),
+        newUsers: prev.newUsers + Math.round(rand(0, 5)),
+        btcCustody: Math.max(0, prev.btcCustody + rand(-0.05, 0.08)),
+        countriesActive: prev.countriesActive,
+      };
+    }
+
+    function pushHistory(m) {
+      for (const k of Object.keys(history)) { history[k].push(m[k]); if (history[k].length > historyLen) history[k].shift(); }
+    }
+
+    function delta(arr) {
+      if (arr.length < 2) return null;
+      if (arr[0] === 0) return null;
+      return ((arr[arr.length - 1] - arr[0]) / Math.abs(arr[0])) * 100;
+    }
+
+    const counters = {};
+    function animateCounter(id, target, decimals = 0, prefix = '') {
+      if (!counters[id]) counters[id] = { current: target };
+      Object.assign(counters[id], { target, start: counters[id].current, startTime: performance.now(), decimals, prefix });
+    }
+    (function loop(now) {
+      for (const id in counters) {
+        const c = counters[id];
+        if (!c.el) c.el = document.getElementById(id);
+        if (!c.el) continue;
+        const p = Math.min((now - (c.startTime || now)) / 1200, 1);
+        c.current = c.start + (c.target - c.start) * (1 - Math.pow(1 - p, 3));
+        c.el.textContent = (c.prefix || '') + fmt(c.current, c.decimals || 0);
+      }
+      requestAnimationFrame(loop);
+    })(performance.now());
+
+    function drawSparkline(id, data, color) {
+      const cv = document.getElementById(id);
+      if (!cv) return;
+      const ctx = cv.getContext('2d'), dpr = devicePixelRatio || 1, r = cv.getBoundingClientRect();
+      cv.width = r.width * dpr; cv.height = r.height * dpr; ctx.scale(dpr, dpr);
+      const w = r.width, h = r.height;
+      if (data.length < 2) return;
+      const mn = Math.min(...data), mx = Math.max(...data), rng = mx - mn || 1, step = w / (data.length - 1);
+      const pts = data.map((v, i) => [i * step, h - ((v - mn) / rng) * (h - 4) - 2]);
+
+      ctx.clearRect(0, 0, w, h);
+      const g = ctx.createLinearGradient(0, 0, 0, h);
+      g.addColorStop(0, color + '40'); g.addColorStop(1, color + '00');
+
+      ctx.beginPath(); ctx.moveTo(pts[0][0], pts[0][1]);
+      for (let i = 1; i < pts.length; i++) { const mx2 = (pts[i-1][0] + pts[i][0]) / 2; ctx.bezierCurveTo(mx2, pts[i-1][1], mx2, pts[i][1], pts[i][0], pts[i][1]); }
+      ctx.lineTo(w, h); ctx.lineTo(0, h); ctx.closePath(); ctx.fillStyle = g; ctx.fill();
+
+      ctx.beginPath(); ctx.moveTo(pts[0][0], pts[0][1]);
+      for (let i = 1; i < pts.length; i++) { const mx2 = (pts[i-1][0] + pts[i][0]) / 2; ctx.bezierCurveTo(mx2, pts[i-1][1], mx2, pts[i][1], pts[i][0], pts[i][1]); }
+      ctx.strokeStyle = color; ctx.lineWidth = 1.5; ctx.stroke();
+    }
+
+    const cards = [
+      { id: 'activeUsers', label: 'Active Users', color: '#f59e0b', decimals: 0 },
+      { id: 'transactions', label: 'Transactions', color: '#f59e0b', decimals: 0 },
+      { id: 'newUsers', label: 'New Users', color: '#f59e0b', decimals: 0 },
+      { id: 'btcCustody', label: 'BTC in Custody', color: '#ef4444', decimals: 2, prefix: '₿ ' },
+    ];
+
+    function renderDelta(val) {
+      if (val === null) return '';
+      return `<span class="delta ${val >= 0 ? 'delta-up' : 'delta-down'}">${val >= 0 ? '▲' : '▼'} ${Math.abs(val).toFixed(1)}%</span>`;
+    }
+
+    function render() {
+      document.getElementById('app').innerHTML = `
+        <div class="header">
+          <div>
+            <div class="logo-group"><div class="logo-bar"></div><h1 class="title">Blink <span>Numbers</span></h1></div>
+            <div class="subtitle">Real-time Key Metrics</div>
+          </div>
+          <div class="header-right">
+            <div class="demo-badge">Demo Mode</div>
+            <div class="live-dot-wrap">
+              <div class="live-dot"><div class="live-dot-inner"></div><div class="live-dot-ring"></div></div>
+              <span class="live-label">Live</span>
+            </div>
+            <span class="timestamp">${new Date().toLocaleTimeString()}</span>
+          </div>
+        </div>
+
+        <div class="grid-top">
+          ${cards.map((c, i) => `
+            <div class="card" style="animation-delay:${i * 0.1}s">
+              <div class="card-accent" style="background:linear-gradient(90deg,${c.color},transparent)"></div>
+              <div>
+                <div class="card-label">${c.label}</div>
+                <div class="card-value-row">
+                  <div class="card-value" id="val-${c.id}">${c.prefix||''}${fmt(metrics[c.id], c.decimals)}</div>
+                  ${renderDelta(delta(history[c.id]))}
+                </div>
+              </div>
+              <div class="spark-wrap"><canvas id="spark-${c.id}"></canvas></div>
+            </div>
+          `).join('')}
+        </div>
+
+        <div class="grid-bottom">
+          <div class="globe-card" style="animation-delay:0.5s">
+            <div class="globe-ring" style="width:70px;height:70px;border-color:rgba(245,158,11,0.12);animation:pulseRing 3s ease-in-out infinite"></div>
+            <div class="globe-ring" style="width:110px;height:110px;border-color:rgba(245,158,11,0.09);animation:pulseRing 4s ease-in-out infinite"></div>
+            <div class="globe-ring" style="width:150px;height:150px;border-color:rgba(245,158,11,0.06);animation:pulseRing 5s ease-in-out infinite"></div>
+            <div class="globe-value" id="val-countries">${fmt(metrics.countriesActive)}</div>
+            <div class="globe-label">Countries Active</div>
+          </div>
+        </div>
+
+        <div class="footer">
+          <span>Simulated data · connect backend for real metrics</span>
+          <span class="footer-mono">Blink Technologies LLC</span>
+        </div>
+      `;
+
+      requestAnimationFrame(() => {
+        cards.forEach(c => { drawSparkline('spark-'+c.id, history[c.id], c.color); counters['val-'+c.id] = { current: metrics[c.id], el: document.getElementById('val-'+c.id), target: metrics[c.id], start: metrics[c.id], startTime: performance.now(), decimals: c.decimals, prefix: c.prefix||'' }; });
+        counters['val-countries'] = { current: metrics.countriesActive, el: document.getElementById('val-countries'), target: metrics.countriesActive, start: metrics.countriesActive, startTime: performance.now(), decimals: 0, prefix: '' };
+      });
+    }
+
+    render();
+
+    setInterval(() => {
+      metrics = tick(metrics);
+      pushHistory(metrics);
+      cards.forEach(c => { animateCounter('val-'+c.id, metrics[c.id], c.decimals, c.prefix||''); drawSparkline('spark-'+c.id, history[c.id], c.color); });
+      animateCounter('val-countries', metrics.countriesActive);
+      cards.forEach(c => {
+        const el = document.getElementById('val-'+c.id)?.closest('.card')?.querySelector('.delta');
+        const d = delta(history[c.id]);
+        if (el && d !== null) { el.className = `delta ${d>=0?'delta-up':'delta-down'}`; el.textContent = `${d>=0?'▲':'▼'} ${Math.abs(d).toFixed(1)}%`; }
+      });
+      const ts = document.querySelector('.timestamp');
+      if (ts) ts.textContent = new Date().toLocaleTimeString();
+    }, 3000);
+
+    window.addEventListener('resize', () => cards.forEach(c => drawSparkline('spark-'+c.id, history[c.id], c.color)));
+  </script>
+</body>
+</html>
