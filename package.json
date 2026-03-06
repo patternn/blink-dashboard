@@ -1,0 +1,42 @@
+{
+  "name": "blink-dashboard",
+  "version": "0.1.0",
+  "description": "Real-time metrics dashboard for Blink (Galoy) — Active Users, Transactions, New Users, BTC in Custody, Countries Active",
+  "private": true,
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "jobs:aggregate": "tsx src/jobs/aggregate.ts",
+    "lint": "eslint src/ --ext .ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.0",
+    "graphql": "^16.9.0",
+    "graphql-request": "^7.1.0",
+    "graphql-ws": "^5.16.0",
+    "ioredis": "^5.4.1",
+    "mongodb": "^6.8.0",
+    "node-cron": "^3.0.3",
+    "socket.io": "^4.7.5",
+    "winston": "^3.14.2",
+    "ws": "^8.18.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.17",
+    "@types/express": "^4.17.21",
+    "@types/node": "^22.5.0",
+    "@types/node-cron": "^3.0.11",
+    "@types/ws": "^8.5.12",
+    "eslint": "^9.9.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.5.4"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}
