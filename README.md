@@ -1,131 +1,66 @@
-# Blink Dashboard
+# Blink Dashboard v2 — BigQuery Edition
 
-Real-time metrics dashboard for Blink (built on Galoy). Tracks Active Users, Transactions, New Users, BTC in Custody, and Countries Active.
+Real-time Blink metrics dashboard reading from BigQuery (streamed from prod DB). Zero load on production database.
 
 ## Architecture
 
 ```
-┌──────────────────────────────────────────────┐
-│              Data Sources                     │
-│                                               │
-│  MongoDB (Galoy DB)  ←  primary source        │
-│  Galoy Admin GraphQL ←  fallback              │
-│  Bria API            ←  on-chain balances     │
-└─────────────┬────────────────────────────────┘
-              │
-    ┌─────────▼──────────┐
-    │  Aggregation Job    │  runs every 30s
-    │  (src/jobs)         │
-    └─────────┬──────────┘
-              │
-    ┌─────────▼──────────┐
-    │  Redis Cache        │  current + snapshots
-    └─────────┬──────────┘
-              │
-    ┌─────────▼──────────┐
-    │  Express + Socket.IO│  REST + WebSocket
-    │  (src/index.ts)     │
-    └─────────┬──────────┘
-              │
-    ┌─────────▼──────────┐
-    │  React Dashboard    │  (separate frontend)
-    └─────────────────────┘
+BigQuery (Galoy stream)
+        │
+        │  SQL queries every 60s
+        ▼
+  Express + Socket.IO ──► Redis (cache + history)
+        │
+        │  WebSocket + REST
+        ▼
+  React Dashboard (frontend/)
 ```
 
-## Quick Start
+## Metrics
+
+Each metric includes **rolling 30d vs prev 30d** and **rolling 7d vs prev 7d** comparisons:
+
+| Metric | BigQuery Query |
+|---|---|
+| Active Users | Distinct accounts with transactions in period |
+| Transactions | Count of transactions in period |
+| New Users | Accounts created in period |
+| BTC in Custody | Sum of BTC wallet balances (sats → BTC) |
+| Countries Active | Distinct phone country codes of active accounts |
+
+## Setup
 
 ```bash
-# 1. Clone & install
-git clone https://github.com/YOUR_ORG/blink-dashboard.git
-cd blink-dashboard
 npm install
-
-# 2. Configure
 cp .env.example .env
-# Edit .env with your Galoy Admin API credentials, MongoDB URI, etc.
-
-# 3. Run with Docker (includes Redis)
-docker compose up
-
-# Or run locally (requires Redis running)
+# Add your BigQuery credentials and project info to .env
+# Place service account JSON in credentials/blink-bigquery-key.json
 npm run dev
 ```
 
-## API Endpoints
-
-| Method | Path                    | Description                          |
-|--------|-------------------------|--------------------------------------|
-| GET    | `/api/metrics`          | Current aggregated metrics           |
-| GET    | `/api/metrics/history`  | Snapshots for sparklines (query: `count`) |
-| POST   | `/api/metrics/refresh`  | Force a fresh aggregation            |
-| GET    | `/api/health`           | Health check                         |
-
-## WebSocket Events
-
-Connect via Socket.IO to receive real-time updates:
-
-```typescript
-import { io } from "socket.io-client";
-
-const socket = io("ws://localhost:3100");
-socket.on("metrics:update", (event) => {
-  console.log(event.data); // Metrics object
-});
-```
-
-## Metrics & Data Sources
-
-| Metric           | Primary Source          | Fallback               |
-|------------------|------------------------|------------------------|
-| Active Users     | MongoDB aggregation    | Admin API `filteredUserCount` |
-| Transactions     | MongoDB ledger count   | —                      |
-| New Users        | MongoDB `createdAt`    | —                      |
-| BTC in Custody   | MongoDB wallet balances| Bria API               |
-| Countries Active | MongoDB phone codes    | Admin API per-country  |
-
 ## Configuration
 
-All configuration is via environment variables. See `.env.example` for the full list.
+All via `.env`. Key variables:
 
-Key variables:
-- `GALOY_ADMIN_API_URL` — Your Galoy admin GraphQL endpoint
-- `GALOY_ADMIN_AUTH_TOKEN` — Bearer token for admin API
-- `MONGODB_URI` — Read-only connection to Galoy's MongoDB
-- `REDIS_URL` — Cache layer
-- `AGGREGATION_INTERVAL_SECONDS` — How often to refresh (default: 30)
+- `BIGQUERY_PROJECT_ID` — GCP project
+- `BIGQUERY_DATASET` — Dataset name (e.g. `galoy_production`)
+- `BIGQUERY_TABLE_*` — Table names (update when schema is confirmed)
+- `BIGQUERY_FIELD_*` — Field names (update when schema is confirmed)
+- `GOOGLE_APPLICATION_CREDENTIALS` — Path to service account JSON
 
-## Project Structure
+## API
 
-```
-src/
-├── config/          # Environment & validation
-├── jobs/            # Aggregation logic
-├── routes/          # Express API routes
-├── services/
-│   ├── cache.ts     # Redis operations
-│   └── galoy/
-│       ├── admin.ts # Galoy Admin GraphQL client
-│       └── mongodb.ts # Direct DB aggregation
-├── types/           # TypeScript interfaces & Zod schemas
-├── utils/           # Logger, helpers
-└── index.ts         # Server entry point
-```
+| Method | Path | Description |
+|---|---|---|
+| GET | `/api/metrics` | Current metrics with 30d/7d comparisons |
+| GET | `/api/metrics/history?count=60` | Snapshots for sparklines |
+| POST | `/api/metrics/refresh` | Force refresh |
+| GET | `/api/health` | Health check |
 
-## Development
+## Adapting to actual schema
 
-```bash
-npm run dev          # Start with hot reload
-npm run build        # Compile TypeScript
-npm run typecheck    # Type check without building
-npm run jobs:aggregate  # Run aggregation once (debug)
-```
+Once you have BigQuery access:
 
-## Notes
-
-- MongoDB collection names may vary between Galoy versions. The service tries multiple common names (`accounts`, `users`, `medici_transactions`, etc.).
-- The `countries` metric is expensive to compute. It runs with every aggregation cycle but could be isolated to a daily cron if needed.
-- BTC custody is reported in BTC (converted from satoshis).
-
-## License
-
-MIT
+1. Run `bq show --schema PROJECT:DATASET.TABLE` to inspect tables
+2. Update `BIGQUERY_TABLE_*` and `BIGQUERY_FIELD_*` in `.env`
+3. Test with `npm run jobs:aggregate`
